@@ -12,6 +12,7 @@ import modules.scripts as scripts
 import gradio as gr
 
 __version__ = "0.0.1"
+processor= model=device=None
 def initialize():
     device="cuda" if torch.cuda.is_available() else "cpu"
     model_path = "./models/CIDAS"
@@ -34,7 +35,10 @@ def resize_img(img, w, h):
 
     return cv2.resize(img, (w, h), interpolation=interpolation)
 
-def create_mask(processor, model,device,image,clipseg_mask_prompt,clipseg_exclude_prompt,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
+def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
+    global processor, model,device
+    if model is None:
+        processor, model,device=initialize()
     texts = [x.strip() for x in clipseg_mask_prompt.split(',')]
     exclude_texts = [x.strip() for x in clipseg_exclude_prompt.split(',')] if clipseg_exclude_prompt else None
     
@@ -100,10 +104,17 @@ class Script(scripts.Script):
         save_mask=gr.inputs.Checkbox(label="Save Mask", default=True)
         mask_blur_median=gr.inputs.Slider(minimum=0, maximum=100, step=1, label='Mask Blur Median', default=11)
         mask_blur_gaussian=gr.inputs.Slider(minimum=0, maximum=100, step=1, label='Mask Blur Gaussian', default=11)
+        with gr.Blocks() as demo:
+            with gr.Row().style(equal_height=True):
+                image=gr.Image(type="pil")
+                mask=gr.Image(type="pil")
+        btn = gr.Button(value="Preview Remove Background")
+        if image is not None:
+            btn.click(create_mask, inputs=[image,prompts,neg_prompts,threshold,mask_blur_median,mask_blur_gaussian],\
+                       outputs=[mask])
         return [threshold, prompts, neg_prompts, save_mask, mask_blur_median, mask_blur_gaussian]
     def run(self,p, threshold, prompts, neg_prompts, save_mask, mask_blur_median, mask_blur_gaussian):
-        processor, model,device=initialize()
-        mask=create_mask(processor, model,device,p.init_images[0],prompts,neg_prompts,threshold,mask_blur_median,mask_blur_gaussian)
+        mask=create_mask(p.init_images[0],prompts,neg_prompts,threshold,mask_blur_median,mask_blur_gaussian)
         if save_mask:
             images.save_image(mask, p.outpath_samples, "", p.seed, p.prompt, opts.samples_format, p=p)
         p.image_mask=mask
