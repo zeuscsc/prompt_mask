@@ -105,7 +105,7 @@ def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,only_mask,clips
 
 class Script(scripts.Script):
     def title(self):
-        return "Mask by Object Name"
+        return "Object Mask"
     def show(self, is_img2img):
         return is_img2img
     def ui(self, is_img2img):
