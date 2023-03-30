@@ -6,6 +6,7 @@ import cv2
 import os
 import numpy as np
 
+from rembg import remove, new_session
 from modules.processing import Processed, StableDiffusionProcessingImg2Img, process_images, images, fix_seed
 from modules.shared import opts, cmd_opts, state
 import modules.scripts as scripts
@@ -35,7 +36,7 @@ def resize_img(img, w, h):
 
     return cv2.resize(img, (w, h), interpolation=interpolation)
 
-def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
+def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,only_mask,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
     global processor, model,device
     if model is None:
         processor, model,device=initialize()
@@ -89,18 +90,30 @@ def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,clipseg_mask_th
     mask_img = resize_img(mask_img, image.width, image.height)
 
     mask_img = cv2.cvtColor(mask_img, cv2.COLOR_GRAY2RGB)
-    return Image.fromarray(mask_img)
+    if only_mask:
+        return Image.fromarray(mask_img)
+    else:
+        from PIL import ImageOps
+        np_img = np.array(image)
+        mask_img = Image.fromarray(mask_img)
+        mask_img=ImageOps.invert(mask_img)
+        mask_img = np.array(mask_img)
+        sub_img=cv2.subtract(np_img, mask_img)
+        sub_img = Image.fromarray(sub_img)
+        transparent_image=remove(sub_img)
+        return transparent_image
 
 class Script(scripts.Script):
     def title(self):
-        return "CLIP mask"
+        return "Mask by Object Name"
     def show(self, is_img2img):
         return is_img2img
     def ui(self, is_img2img):
         if not is_img2img: return
-        threshold = gr.inputs.Slider(minimum=0, maximum=1, step=0.01, label='Threshold', default=0.4)
         prompts=gr.inputs.Textbox(lines=2, label="Prompts", default="people")
         neg_prompts=gr.inputs.Textbox(lines=2, label="Negative Prompts", default="")
+        threshold = gr.inputs.Slider(minimum=0, maximum=1, step=0.01, label='Threshold', default=0.4)
+        only_mask=gr.inputs.Checkbox(label="Only Mask", default=False)
         save_mask=gr.inputs.Checkbox(label="Save Mask", default=True)
         mask_blur_median=gr.inputs.Slider(minimum=0, maximum=100, step=1, label='Mask Blur Median', default=11)
         mask_blur_gaussian=gr.inputs.Slider(minimum=0, maximum=100, step=1, label='Mask Blur Gaussian', default=11)
@@ -110,11 +123,11 @@ class Script(scripts.Script):
                 mask=gr.Image(type="pil")
         btn = gr.Button(value="Preview Remove Background")
         if image is not None:
-            btn.click(create_mask, inputs=[image,prompts,neg_prompts,threshold,mask_blur_median,mask_blur_gaussian],\
+            btn.click(create_mask, inputs=[image,prompts,neg_prompts,only_mask,threshold,mask_blur_median,mask_blur_gaussian],\
                        outputs=[mask])
-        return [threshold, prompts, neg_prompts, save_mask, mask_blur_median, mask_blur_gaussian]
-    def run(self,p, threshold, prompts, neg_prompts, save_mask, mask_blur_median, mask_blur_gaussian):
-        mask=create_mask(p.init_images[0],prompts,neg_prompts,threshold,mask_blur_median,mask_blur_gaussian)
+        return [prompts, neg_prompts,only_mask,threshold, save_mask, mask_blur_median, mask_blur_gaussian]
+    def run(self,p, prompts, neg_prompts,only_mask,threshold, save_mask, mask_blur_median, mask_blur_gaussian):
+        mask=create_mask(p.init_images[0],prompts,neg_prompts,True,threshold,mask_blur_median,mask_blur_gaussian)
         if save_mask:
             images.save_image(mask, p.outpath_samples, "", p.seed, p.prompt, opts.samples_format, p=p)
         p.image_mask=mask
