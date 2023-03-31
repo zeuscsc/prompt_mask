@@ -12,6 +12,18 @@ from modules.shared import opts, cmd_opts, state
 import modules.scripts as scripts
 import gradio as gr
 
+def import_or_install(package,pip_name=None):
+    import importlib
+    import subprocess
+    if pip_name is None:
+        pip_name=package
+    try:
+        importlib.import_module(package)
+        print(f"{package} is already installed")
+    except ImportError:
+        print(f"{package} is not installed, installing now...")
+        subprocess.call(['pip', 'install', package])
+        print(f"{package} has been installed")
 __version__ = "0.0.1"
 processor= model=device=None
 def initialize():
@@ -37,6 +49,7 @@ def resize_img(img, w, h):
     return cv2.resize(img, (w, h), interpolation=interpolation)
 
 def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,only_mask,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
+    import_or_install("rembg","rembg[gpu]")
     global processor, model,device
     if model is None:
         processor, model,device=initialize()
