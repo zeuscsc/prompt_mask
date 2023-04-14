@@ -6,11 +6,11 @@ import cv2
 import os
 import numpy as np
 
-from rembg import remove, new_session
 from modules.processing import Processed, StableDiffusionProcessingImg2Img, process_images, images, fix_seed
 from modules.shared import opts, cmd_opts, state
 import modules.scripts as scripts
 import gradio as gr
+from fastapi import FastAPI, Body
 
 def import_or_install(package,pip_name=None):
     import importlib
@@ -50,6 +50,7 @@ def resize_img(img, w, h):
 
 def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,only_mask,clipseg_mask_threshold=0.4,mask_blur_size=11,mask_blur_size2=11):
     import_or_install("rembg","rembg[gpu]")
+    from rembg import remove
     global processor, model,device
     if model is None:
         processor, model,device=initialize()
@@ -60,7 +61,7 @@ def create_mask(image,clipseg_mask_prompt,clipseg_exclude_prompt,only_mask,clips
         all_texts = texts + exclude_texts
     else:
         all_texts = texts
-
+    
     inputs = processor(text=all_texts, images=[image] * len(all_texts), padding="max_length", return_tensors="pt")
     inputs = inputs.to(device)
 
@@ -147,3 +148,27 @@ class Script(scripts.Script):
         proc = process_images(p)
         proc.images.append(mask)
         return proc
+    
+def prompt_mask_api(_: gr.Blocks, app: FastAPI):
+    @app.get("/prompt_mask/status")
+    async def get_status():
+        return {"status": "ok", "version": "1.0.0"}
+    @app.post("/prompt_mask/remove-background")
+    async def post_create_mask(image_str: str = Body(...), prompts: str = Body(...), neg_prompts: str = Body(...,embed=True),\
+                               only_mask: bool = Body(...), threshold: float = Body(...),\
+                               mask_blur_median: int = Body(...), mask_blur_gaussian: int = Body(...)):
+        import base64
+        import io
+        image_bytes = base64.b64decode(image_str)
+        image = Image.open(io.BytesIO(image_bytes),formats=['PNG']).convert('RGB')
+        mask=create_mask(image,prompts,neg_prompts,only_mask,threshold,mask_blur_median,mask_blur_gaussian)
+        buffered = io.BytesIO()
+        mask.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue())
+        return {"mask": img_str}
+try:
+    import modules.script_callbacks as script_callbacks
+
+    script_callbacks.on_app_started(prompt_mask_api)
+except:
+    pass
