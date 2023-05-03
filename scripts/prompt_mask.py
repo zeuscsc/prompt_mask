@@ -157,6 +157,9 @@ def prompt_mask_api(_: gr.Blocks, app: FastAPI):
     async def post_create_mask(image_str: str = Body(...), prompts: str = Body(...), neg_prompts: str = Body(...,embed=True),\
                                only_mask: bool = Body(...), threshold: float = Body(...),\
                                mask_blur_median: int = Body(...), mask_blur_gaussian: int = Body(...)):
+        import modules.shared as shared
+        if shared.tecky_auth.demo_available() is False:
+            return {"error": "Server Busy"}
         import base64
         import io
         image_bytes = base64.b64decode(image_str)
